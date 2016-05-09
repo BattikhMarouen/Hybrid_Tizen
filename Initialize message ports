@@ -1,0 +1,154 @@
+
+var app = tizen.application.getCurrentApplication();
+var gServiceAppId = "YOUR WEB APP ID.serviceapp"; // For hybrid apps
+var gServicePortName = "SAMPLE_PORTTT";
+
+var gLocalMessagePortName = "SAMPLE_PORTTT";
+
+var gLocalMessagePort;
+var gRemoteMessagePort = null;
+var gLocalMessagePortWatchId;
+var isStarting = false;
+var ServiceAppFound = false;
+
+window.onload = function() {
+    // TODO:: Do your initialization job
+    // add eventListener for tizenhwkey
+    document.addEventListener('tizenhwkey', function(e) {
+        if (e.keyName === "back") {
+            try {
+                tizen.application.getCurrentApplication().exit();
+            } catch (ignore) {}
+        }
+    });
+    // Sample code
+    var mainPage = document.querySelector('#main');
+    mainPage.addEventListener("click", function() {
+        var contentText = document.querySelector('#content-text');
+        contentText.innerHTML = (contentText.innerHTML === "Basic") ? "Tizen" : "Basic";
+    });
+    LaunchNativeService();
+};
+
+
+function launchServiceApp() {
+    function onSuccess() {
+        console.log("Client->Service App launched successfully!");
+        LaunchNativeService();
+        // Now initialize the message ports
+        console.log("Client->Initializing message ports");
+        initMessagePort();
+    }
+
+    function onError(err) {
+        console.log("Client->Service Applaunch failed");
+        isStarting = false;
+    }
+
+    try {
+        console.log("Client->Launching [" + gServiceAppId + "]");
+        tizen.application.launch(gServiceAppId, onSuccess, onError);
+    } catch (exc) {
+        console.log("Client-> tizen.application.launch method failed");
+        alert("launch exc:" + exc.message);
+    }
+
+}
+
+function LaunchNativeService() {
+    if (!ServiceAppFound) {
+        try {
+            tizen.application.getAppsContext(onGetAppsContextSuccess, onGetAppsContextError);
+        } catch (exc) {
+            console.log("Get AppContext Error");
+        }
+    } else {
+        console.log("Client->Service already running");
+    }
+}
+
+function onGetAppsContextSuccess(contexts) {
+    for (var i = 0; i < contexts.length; i++) {
+        var appInfo = tizen.application.getAppInfo(contexts[i].appId);
+        console.log(appInfo.id + "   " + appInfo.name);
+        if (appInfo.id == gServiceAppId) {
+            console.log("Client->Running Service App found");
+            ServiceAppFound = true;
+            break;
+        }
+    }
+    if (ServiceAppFound) {
+        console.log("Client->Service App found and ready to serve");
+        // Now initialize the message ports
+        console.log("Client->Initializing message ports");
+        initMessagePort();
+
+    } else {
+        console.log("Client->Service app not ready, will launch the service now");
+        launchServiceApp();
+    }
+
+}
+
+function onGetAppsContextError(err) {
+    console.log("Client->getAppsContext exc");
+}
+
+
+function initMessagePort() {
+
+    console.log("Client->Initializing local/remote message ports");
+
+    try {
+        gLocalMessagePort = tizen.messageport.requestLocalMessagePort(gLocalMessagePortName);
+        gLocalMessagePortWatchId = gLocalMessagePort.addMessagePortListener(function(data, remote) {
+            onReceive(data, remote);
+        });
+        console.log("Client->LocalMessagePort initialized successfully");
+
+    } catch (e) {
+        console.log("Client->Error in initializing -LocalMessagePort" + e.name);
+    }
+
+    try {
+        gRemoteMessagePort = tizen.messageport.requestRemoteMessagePort(gServiceAppId, gServicePortName);
+        console.log("Client->RemoteMessagePort initialized successfully");
+    } catch (e) {
+        console.log("Client->Error in initializing -RemoteMessagePort" + e.name);
+        initMessagePort();
+    }
+
+}
+
+function sendCommand(command) {
+    if (gRemoteMessagePort) {
+        console.log("Client->Sending: " + command);
+        gRemoteMessagePort.sendMessage([{
+            key: "name",
+            value: command
+        }], gLocalMessagePort);
+
+    } else {
+        console.log("Remote Message Port not initialized");
+        initMessagePort();
+    }
+}
+
+function sendBTN() {
+    sendCommand("start");
+}
+
+function StopBTN() {
+    sendCommand("stop");
+}
+
+function onReceive(data, remote) {
+    var message;
+    for (var i in data) {
+        if (data[i].key == "server")
+            message = data[i].value;
+    }
+    console.log("Client->Received : " + message);
+
+    
+}
